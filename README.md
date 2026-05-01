@@ -15,6 +15,8 @@ Chrome extension that transforms negative news headlines into positive alternati
 2. Click the extension icon and paste your key
 3. The filter runs automatically on news sites
 
+> **Note on costs**: The extension uses `gpt-4o-mini` which is cheap (around $0.15 / 1M input tokens at time of writing). A typical browsing session of ~50 headlines costs less than a cent. Hard-coded replacements run first to minimise API calls.
+
 ## Files
 
 ```
