@@ -1,0 +1,14 @@
+{
+  "name": "negative-news-filter",
+  "version": "1.0.0",
+  "description": "Chrome extension that transforms negative news headlines into positive alternatives using AI",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.4.0"
+  }
+}

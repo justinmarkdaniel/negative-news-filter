@@ -1,16 +1,17 @@
 // Popup script for API key configuration
 
+type StatusType = 'success' | 'error';
+
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('[POPUP] Popup loaded');
 
-    const apiKeyInput = document.getElementById('apiKey');
-    const saveButton = document.getElementById('saveKey');
-    const statusDiv = document.getElementById('status');
-    const activateButton = document.getElementById('activateFilter');
+    const apiKeyInput = document.getElementById('apiKey') as HTMLInputElement;
+    const saveButton = document.getElementById('saveKey') as HTMLButtonElement;
+    const statusDiv = document.getElementById('status') as HTMLElement;
+    const activateButton = document.getElementById('activateFilter') as HTMLButtonElement | null;
 
-    // Load existing API key
     try {
-        const { openaiApiKey } = await chrome.storage.local.get('openaiApiKey');
+        const { openaiApiKey } = (await chrome.storage.local.get('openaiApiKey')) as ApiKeyStorage;
         if (openaiApiKey) {
             apiKeyInput.value = openaiApiKey;
             console.log('[POPUP] Loaded existing API key');
@@ -19,7 +20,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('[POPUP] Error loading API key:', error);
     }
 
-    // Save API key
     saveButton.addEventListener('click', async () => {
         const apiKey = apiKeyInput.value.trim();
 
@@ -38,29 +38,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Activate filter button
     if (activateButton) {
         activateButton.addEventListener('click', async () => {
             try {
                 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-                if (!tab) {
+                if (!tab || tab.id === undefined) {
                     showStatus('No active tab found', 'error');
                     return;
                 }
 
                 console.log('[POPUP] Sending activate message to tab:', tab.id);
 
-                await chrome.tabs.sendMessage(tab.id, { action: 'activateFilter' });
+                const message: ActivateFilterRequest = { action: 'activateFilter' };
+                await chrome.tabs.sendMessage(tab.id, message);
                 showStatus('Filter activated!', 'success');
-            } catch (error) {
+            } catch (error: unknown) {
+                const messageText = error instanceof Error ? error.message : String(error);
                 console.error('[POPUP] Error activating filter:', error);
-                showStatus('Error: ' + error.message, 'error');
+                showStatus('Error: ' + messageText, 'error');
             }
         });
     }
 
-    function showStatus(message, type) {
+    function showStatus(message: string, type: StatusType): void {
         statusDiv.textContent = message;
         statusDiv.className = 'status-message ' + type;
 

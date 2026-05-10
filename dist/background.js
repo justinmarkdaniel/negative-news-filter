@@ -1,47 +1,40 @@
+"use strict";
 // Background service worker for API calls
-
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     console.log('[INF PLUGIN] [BACKGROUND] 📨 Message received:', request.action);
-
     if (request.action === 'filterContent') {
         console.log(`[INF PLUGIN] [BACKGROUND] Processing ${request.pageContent.length} text blocks`);
         handleFilterContent(request.pageContent, request.url)
-            .then(result => {
-                console.log('[INF PLUGIN] [BACKGROUND] ✅ Sending response:', result);
-                sendResponse(result);
-            })
-            .catch(error => {
-                console.error('[INF PLUGIN] [BACKGROUND] ❌ Error:', error);
-                sendResponse({ success: false, error: error.message });
-            });
+            .then((result) => {
+            console.log('[INF PLUGIN] [BACKGROUND] ✅ Sending response:', result);
+            sendResponse(result);
+        })
+            .catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error('[INF PLUGIN] [BACKGROUND] ❌ Error:', error);
+            sendResponse({ success: false, error: message });
+        });
         return true; // Keep channel open for async response
     }
+    return false;
 });
-
 async function handleFilterContent(pageContent, url) {
     console.log('[INF PLUGIN] [BACKGROUND] 🚀 Starting handleFilterContent...');
-
     try {
-        // Get API key from storage
         console.log('[INF PLUGIN] [BACKGROUND] 🔑 Retrieving API key from storage...');
-        const { openaiApiKey } = await chrome.storage.local.get('openaiApiKey');
-
+        const { openaiApiKey } = (await chrome.storage.local.get('openaiApiKey'));
         if (!openaiApiKey) {
             console.error('[INF PLUGIN] [BACKGROUND] ❌ No API key found!');
             throw new Error('OpenAI API key not configured. Please set it in the extension popup.');
         }
-
         console.log('[INF PLUGIN] [BACKGROUND] ✅ API key found (length:', openaiApiKey.length, ')');
-
         // Build the prompt
         console.log('[INF PLUGIN] [BACKGROUND] 📝 Building prompt...');
         const prompt = buildFilterPrompt(pageContent, url);
         console.log('[INF PLUGIN] [BACKGROUND] Prompt length:', prompt.length, 'chars');
-
         // Call OpenAI API
         console.log('[INF PLUGIN] [BACKGROUND] 🌐 Calling OpenAI API...');
         console.log('[INF PLUGIN] [BACKGROUND] Model: gpt-4o-mini');
-
         const requestBody = {
             model: 'gpt-4o-mini',
             messages: [
@@ -55,9 +48,7 @@ async function handleFilterContent(pageContent, url) {
                 }
             ]
         };
-
         console.log('[INF PLUGIN] [BACKGROUND] Request (first 500 chars):', JSON.stringify(requestBody, null, 2).substring(0, 500));
-
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -66,42 +57,32 @@ async function handleFilterContent(pageContent, url) {
             },
             body: JSON.stringify(requestBody)
         });
-
         console.log('[INF PLUGIN] [BACKGROUND] 📡 Response status:', response.status, response.statusText);
-
         if (!response.ok) {
-            const error = await response.json();
+            const error = (await response.json());
             console.error('[INF PLUGIN] [BACKGROUND] ❌ API error response:', error);
             throw new Error(`OpenAI API error: ${error.error?.message || response.statusText}`);
         }
-
-        const data = await response.json();
+        const data = (await response.json());
         console.log('[INF PLUGIN] [BACKGROUND] ✅ API response received');
         console.log('[INF PLUGIN] [BACKGROUND] Usage:', data.usage);
-
-        const content = data.choices[0].message.content;
+        const content = data.choices[0]?.message.content ?? '';
         console.log('[INF PLUGIN] [BACKGROUND] 📄 Raw content from API:');
         console.log(content);
-
         // Parse JSON response
         console.log('[INF PLUGIN] [BACKGROUND] 🔍 Parsing JSON...');
         const replacements = parseReplacements(content);
         console.log(`[INF PLUGIN] [BACKGROUND] ✅ Parsed ${replacements.length} replacements`);
-
-        return {
-            success: true,
-            replacements: replacements
-        };
-    } catch (error) {
+        return { success: true, replacements };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error ? error.stack : undefined;
         console.error('[INF PLUGIN] [BACKGROUND] ❌ Error in handleFilterContent:', error);
-        console.error('[INF PLUGIN] [BACKGROUND] Stack:', error.stack);
-        return {
-            success: false,
-            error: error.message
-        };
+        console.error('[INF PLUGIN] [BACKGROUND] Stack:', stack);
+        return { success: false, error: message };
     }
 }
-
 function getSystemPrompt() {
     return `You are an Internet Negativity & News Filter for mental wellbeing.
     You filter all news headlines > and correct them to use more positive phrasing.
@@ -253,44 +234,37 @@ ONLY return valid JSON (no markdown, no explanations):
 
 Process ALL headlines with negative content, even just one negative word, fix it up. Be EXTREMELY thorough and aggressive. Err on the side of replacing MORE, not less. Ignore only navigation, menus, buttons, links.`;
 }
-
 function buildFilterPrompt(pageContent, url) {
-    // Build a structured text representation
-    const textList = pageContent.map(block =>
-        `[${block.index}] <${block.tag}> (${block.fontSize}px): ${block.text}`
-    ).join('\n');
-
+    const textList = pageContent
+        .map((block) => `[${block.index}] <${block.tag}> (${block.fontSize}px): ${block.text}`)
+        .join('\n');
     return `URL: ${url}\n\nPage content above the fold:\n\n${textList}\n\n---\n\nIdentify negative news headlines and provide positive replacements. Return JSON only.`;
 }
-
 function parseReplacements(content) {
     console.log('[INF PLUGIN] [BACKGROUND] 🔧 parseReplacements called');
-
     try {
         // Try to extract JSON from markdown code blocks if present
         let jsonStr = content.trim();
         console.log('[INF PLUGIN] [BACKGROUND] Original content length:', jsonStr.length);
-
         // Remove markdown code blocks
         if (jsonStr.startsWith('```')) {
             console.log('[INF PLUGIN] [BACKGROUND] Removing markdown code blocks...');
             jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```\s*$/g, '').trim();
             console.log('[INF PLUGIN] [BACKGROUND] After removing markdown:', jsonStr.substring(0, 100));
         }
-
         console.log('[INF PLUGIN] [BACKGROUND] Attempting JSON.parse...');
         const parsed = JSON.parse(jsonStr);
         console.log('[INF PLUGIN] [BACKGROUND] ✅ JSON parsed successfully');
         console.log('[INF PLUGIN] [BACKGROUND] Parsed array length:', parsed.length);
         console.log('[INF PLUGIN] [BACKGROUND] Full parsed data:', JSON.stringify(parsed, null, 2));
-
         return parsed;
-    } catch (error) {
+    }
+    catch (error) {
+        const stack = error instanceof Error ? error.stack : undefined;
         console.error('[INF PLUGIN] [BACKGROUND] ❌ Error parsing JSON response:', error);
         console.error('[INF PLUGIN] [BACKGROUND] Content received:', content);
-        console.error('[INF PLUGIN] [BACKGROUND] Error stack:', error.stack);
+        console.error('[INF PLUGIN] [BACKGROUND] Error stack:', stack);
         return [];
     }
 }
-
 console.log('[INF PLUGIN] [BACKGROUND] ✅ Background service worker loaded and ready');

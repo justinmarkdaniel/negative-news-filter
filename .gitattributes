@@ -1,0 +1,2 @@
+dist/* linguist-generated=true
+*.min.js linguist-vendored=true
